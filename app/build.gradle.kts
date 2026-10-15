@@ -37,6 +37,10 @@ android {
             isMinifyEnabled = false
             if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
         }
+        // Test builds use the same key when it's available, so they install over each other.
+        debug {
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -47,6 +51,11 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    packaging {
+        resources {
+            excludes += setOf("META-INF/NOTICE.md", "META-INF/LICENSE.md")
+        }
     }
 }
 
@@ -68,6 +77,9 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.android.mail)
+    implementation(libs.android.activation)
     debugImplementation(libs.androidx.ui.tooling)
     testImplementation(libs.junit)
 }
