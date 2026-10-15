@@ -53,5 +53,7 @@ class MigrationTest {
         assertNull(item.category)
         assertNull(item.parentId)
         assertEquals("", item.pendingTodos)
+        assertEquals("", item.checklist)
+        assertFalse(item.isTemplate)
     }
 }

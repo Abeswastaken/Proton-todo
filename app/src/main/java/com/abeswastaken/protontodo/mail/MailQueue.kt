@@ -18,7 +18,12 @@ import com.abeswastaken.protontodo.domain.Reminders
 import com.abeswastaken.protontodo.settings.Settings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.abeswastaken.protontodo.ui.Lists
+import java.time.DayOfWeek
+import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.temporal.TemporalAdjusters
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import javax.mail.AuthenticationFailedException
@@ -112,6 +117,65 @@ class NudgeWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             open.forEach { appendLine("- ${it.title}") }
         }
         MailQueue.enqueue(applicationContext, "Open tasks: ${open.size}", body)
+        return Result.success()
+    }
+}
+
+/** Optional Sunday-evening email listing the coming week's events and due to-dos. */
+object Lookahead {
+    private const val NAME = "weekly-lookahead"
+
+    fun sync(context: Context, s: Settings, replace: Boolean) {
+        val wm = WorkManager.getInstance(context)
+        if (!s.lookaheadEnabled) {
+            wm.cancelUniqueWork(NAME)
+            return
+        }
+        val now = LocalDateTime.now()
+        var first = now.toLocalDate().with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY)).atTime(18, 0)
+        if (!first.isAfter(now)) first = first.plusWeeks(1)
+        val req = PeriodicWorkRequestBuilder<LookaheadWorker>(7, TimeUnit.DAYS)
+            .setInitialDelay(Duration.between(now, first).toMinutes(), TimeUnit.MINUTES)
+            .setConstraints(network)
+            .build()
+        val policy = if (replace) ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE else ExistingPeriodicWorkPolicy.KEEP
+        wm.enqueueUniquePeriodicWork(NAME, policy, req)
+    }
+
+    /** The email body, or null when the week is empty. */
+    fun body(items: List<Item>, today: LocalDate): String? {
+        val end = today.plusDays(7)
+        val fmt = DateTimeFormatter.ofPattern("EEE, MMM d")
+        val events = Lists.upcomingEvents(items, today).filter { it.date.isBefore(end) }
+        val tasks = Lists.openTasks(items).mapNotNull { t ->
+            val due = Reminders.occurrence(t, today) ?: t.dateEpochDay?.let(LocalDate::ofEpochDay)
+            due?.takeIf { it.isBefore(end) }?.let { t to it }
+        }.sortedBy { it.second }
+        if (events.isEmpty() && tasks.isEmpty()) return null
+        return buildString {
+            if (events.isNotEmpty()) {
+                appendLine("Events")
+                events.forEach { d ->
+                    val time = d.item.timeMinutes?.let { " at " + Reminders.time(it).format(DateTimeFormatter.ofPattern("h:mm a")) } ?: ""
+                    appendLine("- ${if (d.item.important) "(!) " else ""}${d.item.title}: ${d.date.format(fmt)}$time")
+                }
+                appendLine()
+            }
+            if (tasks.isNotEmpty()) {
+                appendLine("To-dos due")
+                tasks.forEach { (t, due) ->
+                    val late = if (due.isBefore(today)) " (overdue)" else ""
+                    appendLine("- ${if (t.important) "(!) " else ""}${t.title}: ${due.format(fmt)}$late")
+                }
+            }
+        }.trim()
+    }
+}
+
+class LookaheadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val body = Lookahead.body(applicationContext.app.repo.all(), LocalDate.now()) ?: return Result.success()
+        MailQueue.enqueue(applicationContext, "Your week ahead", body)
         return Result.success()
     }
 }

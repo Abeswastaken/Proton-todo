@@ -67,7 +67,7 @@ fun SearchScreen(items: List<Item>, onOpen: (Item) -> Unit) {
         "To-Do" to matches.filter { !it.isDraft && it.isTask && it.completedAt == null },
         "Events" to matches.filter { !it.isDraft && it.isEvent },
         "Completed tasks" to matches.filter { !it.isDraft && it.isTask && it.completedAt != null },
-        "Drafts" to matches.filter { it.isDraft },
+        "Drafts" to matches.filter { it.isDraft && !it.isTemplate },
     ).filter { it.second.isNotEmpty() }
     val mark = MaterialTheme.colorScheme.primaryContainer
 

@@ -50,8 +50,12 @@ data class Item(
     @ColumnInfo(defaultValue = "0") val important: Boolean = false,
     /** A [com.abeswastaken.protontodo.ui.Category] name shown as an icon, or null. */
     val category: String? = null,
-    /** Linked to-do titles, one per line, waiting to be created when this draft or form is saved for real. */
+    /** Linked to-dos waiting to be created when this item is saved for real. See [com.abeswastaken.protontodo.domain.LinkedTodo]. */
     @ColumnInfo(defaultValue = "") val pendingTodos: String = "",
+    /** See [com.abeswastaken.protontodo.domain.Checklist]. */
+    @ColumnInfo(defaultValue = "") val checklist: String = "",
+    /** Templates are stored as drafts too, so nothing schedules or sends for them. */
+    @ColumnInfo(defaultValue = "0") val isTemplate: Boolean = false,
 ) {
     val isTask get() = kind == KIND_TASK
     val isEvent get() = kind == KIND_EVENT

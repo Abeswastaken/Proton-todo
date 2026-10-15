@@ -7,8 +7,11 @@ import androidx.lifecycle.viewModelScope
 import com.abeswastaken.protontodo.App
 import com.abeswastaken.protontodo.backup.Backup
 import com.abeswastaken.protontodo.data.Item
+import com.abeswastaken.protontodo.domain.Checklist
 import com.abeswastaken.protontodo.mail.Ics
 import com.abeswastaken.protontodo.mail.Mailer
+import com.abeswastaken.protontodo.backup.AutoBackup
+import com.abeswastaken.protontodo.mail.Lookahead
 import com.abeswastaken.protontodo.mail.Nudge
 import com.abeswastaken.protontodo.settings.Settings
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +36,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun delete(item: Item, done: () -> Unit = {}) = viewModelScope.launch { repo.delete(item); done() }
     fun complete(item: Item, done: (LocalDate?) -> Unit = {}) = viewModelScope.launch { done(repo.complete(item)) }
     fun reopen(item: Item) = viewModelScope.launch { repo.reopen(item) }
+    fun restore(item: Item) = viewModelScope.launch { repo.restore(item) }
+    fun resendInvite(item: Item) = viewModelScope.launch { repo.resendInvite(item) }
+    fun setChecklist(item: Item, entries: List<Checklist.Entry>) = viewModelScope.launch { repo.setChecklist(item.id, Checklist.encode(entries)) }
+    fun saveTemplate(item: Item, name: String) = viewModelScope.launch { repo.saveTemplate(item, name) }
 
     fun updateSettings(transform: (Settings) -> Settings) {
         val before = app.settings.current
@@ -41,6 +48,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (before.nudgeEnabled != after.nudgeEnabled || before.nudgeEveryDays != after.nudgeEveryDays) {
             Nudge.sync(app, after, replace = true)
         }
+        if (before.lookaheadEnabled != after.lookaheadEnabled) Lookahead.sync(app, after, replace = true)
+        if (before.autoBackup != after.autoBackup || before.backupFolder != after.backupFolder) AutoBackup.sync(app, after, replace = true)
     }
 
     fun setToken(token: String) = app.settings.setToken(token)
@@ -77,7 +86,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         done(runCatching { "Exported ${Backup.export(app, uri)} items." }.getOrElse { "Export failed: ${it.message}" })
     }
 
-    fun import(uri: Uri, done: (String) -> Unit) = viewModelScope.launch {
+    fun backupNow(done: (String) -> Unit) = viewModelScope.launch {
+        done(runCatching { "Backed up ${AutoBackup.runNow(app)} items." }.getOrElse { "Backup failed: ${it.message}" })
+    }
+
+    fun deleteTemplate(item: Item) = viewModelScope.launch { repo.delete(item) }
+
+        fun import(uri: Uri, done: (String) -> Unit) = viewModelScope.launch {
         done(runCatching { "Imported ${Backup.import(app, uri)} items. Re-enter your SMTP token if needed." }.getOrElse { "Import failed: ${it.message}" })
+        val s = app.settings.current
+        Nudge.sync(app, s, replace = true)
+        Lookahead.sync(app, s, replace = true)
+        AutoBackup.sync(app, s, replace = true)
     }
 }

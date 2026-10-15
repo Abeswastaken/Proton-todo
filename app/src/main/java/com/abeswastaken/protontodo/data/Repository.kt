@@ -3,6 +3,8 @@ package com.abeswastaken.protontodo.data
 import android.content.Context
 import com.abeswastaken.protontodo.alarm.Notifications
 import com.abeswastaken.protontodo.alarm.ReminderScheduler
+import com.abeswastaken.protontodo.domain.Checklist
+import com.abeswastaken.protontodo.domain.LinkedTodo
 import com.abeswastaken.protontodo.domain.Reminders
 import com.abeswastaken.protontodo.mail.MailQueue
 import com.abeswastaken.protontodo.settings.SettingsStore
@@ -49,11 +51,63 @@ class Repository(
         return id
     }
 
-    /** Creates the undated to-dos waiting on an event, such as "Print the new insurance card". */
+    /**
+     * Creates the to-dos waiting on an event, such as "Print the new insurance card". One with a
+     * due date gets the default reminders but no calendar invite of its own.
+     */
     private suspend fun createLinkedTodos(event: Item) {
-        event.pendingTodos.lines().map { it.trim() }.filter { it.isNotEmpty() }.forEach {
-            save(Item(kind = KIND_TASK, title = it, parentId = event.id, addToCalendar = false, emailReminders = event.emailReminders))
+        val s = settings.current
+        val eventDate = event.dateEpochDay?.let(LocalDate::ofEpochDay)
+        LinkedTodo.parse(event.pendingTodos).forEach { t ->
+            val due = if (eventDate != null && t.daysBefore != null) eventDate.minusDays(t.daysBefore.toLong()) else null
+            save(
+                Item(
+                    kind = KIND_TASK,
+                    title = t.title,
+                    parentId = event.id,
+                    dateEpochDay = due?.toEpochDay(),
+                    reminders = if (due != null) s.defaultReminder else "",
+                    dayOfReminder = s.defaultDayOf,
+                    allDayReminderMinutes = s.allDayReminderMinutes,
+                    addToCalendar = false,
+                    emailReminders = event.emailReminders,
+                    important = event.important,
+                    category = event.category,
+                ),
+            )
         }
+    }
+
+    /** Puts an item back exactly as it was, for Undo. */
+    suspend fun restore(item: Item) {
+        dao.update(item)
+        if (item.pendingAckAt == null) Notifications.cancel(context, item.id)
+        ReminderScheduler.reschedule(context, item)
+    }
+
+    /** Sends the calendar invite again, for when the first one was deleted before it was added. */
+    suspend fun resendInvite(item: Item) {
+        if (item.dateEpochDay == null) return
+        val next = if (item.calendarUid == null) item.copy(calendarUid = "${UUID.randomUUID()}@protontodo", calendarSequence = 0, addToCalendar = true)
+        else item.copy(calendarSequence = item.calendarSequence + 1, addToCalendar = true)
+        dao.update(next)
+        MailQueue.invite(context, next, settings.current)
+    }
+
+    suspend fun setChecklist(id: Long, checklist: String) = dao.setChecklist(id, checklist)
+
+    /** Saves a copy as a reusable template: no date, steps unticked, nothing scheduled. */
+    suspend fun saveTemplate(item: Item, name: String) {
+        val now = System.currentTimeMillis()
+        val steps = Checklist.parse(item.checklist).map { it.copy(done = false) }
+        dao.insert(
+            item.copy(
+                id = 0, title = name, isDraft = true, isTemplate = true, dateEpochDay = null, repeatRule = null,
+                completedAt = null, doneThroughEpochDay = null, lastReminderAt = null, pendingAckAt = null,
+                calendarUid = null, calendarSequence = 0, parentId = null, checklist = Checklist.encode(steps),
+                createdAt = now, updatedAt = now,
+            ),
+        )
     }
 
     /** Drafts stay local: no reminders, emails or calendar invites. */

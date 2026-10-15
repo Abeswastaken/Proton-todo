@@ -22,6 +22,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -33,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +55,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.abeswastaken.protontodo.data.Item
+import com.abeswastaken.protontodo.data.KIND_EVENT
 import com.abeswastaken.protontodo.ui.screens.EventsScreen
 import com.abeswastaken.protontodo.ui.screens.FormMode
 import com.abeswastaken.protontodo.ui.screens.FormState
@@ -58,6 +64,7 @@ import com.abeswastaken.protontodo.ui.screens.ItemForm
 import com.abeswastaken.protontodo.ui.screens.SearchScreen
 import com.abeswastaken.protontodo.ui.screens.SettingsScreen
 import com.abeswastaken.protontodo.ui.screens.TodoScreen
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
@@ -73,6 +80,9 @@ private const val SEARCH = "search"
 private const val SETTINGS = "settings"
 private const val ITEM = "item/{id}"
 private const val DRAFT = "draft/{id}"
+
+/** A request from outside the app (an icon shortcut or shared text) to open a filled-in New form. */
+data class NewRequest(val kind: String, val title: String = "", val description: String = "")
 
 /** Holds "unsaved changes" so any navigation away from a form asks first. */
 class LeaveGuard {
@@ -101,7 +111,13 @@ private fun NavHostController.goHome() = navigate(Tab.HOME.route) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProtonTodoApp(vm: AppViewModel, openItemId: Long?, onOpenedItem: () -> Unit) {
+fun ProtonTodoApp(
+    vm: AppViewModel,
+    openItemId: Long?,
+    onOpenedItem: () -> Unit,
+    newRequest: NewRequest? = null,
+    onHandledNew: () -> Unit = {},
+) {
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route ?: Tab.HOME.route
@@ -112,9 +128,49 @@ fun ProtonTodoApp(vm: AppViewModel, openItemId: Long?, onOpenedItem: () -> Unit)
     val guard = remember { LeaveGuard() }
     val context = LocalContext.current
     val toast = { msg: String -> Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val complete = { item: Item ->
-        vm.complete(item) { next -> toast(if (next != null) "Done. Next: ${dateText(next)}" else "Completed") }
+        vm.complete(item) { next ->
+            scope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                val result = snackbar.showSnackbar(
+                    if (next != null) "Done. Next: ${dateText(next)}" else "Completed",
+                    actionLabel = "Undo",
+                    duration = SnackbarDuration.Short,
+                )
+                if (result == SnackbarResult.ActionPerformed) vm.restore(item)
+            }
+        }
         Unit
+    }
+    // The New form starts from this when set: a copy, a template, a shortcut or shared text.
+    var newFormKey by remember { mutableIntStateOf(0) }
+    var prefill by remember { mutableStateOf<FormState?>(null) }
+    val startNew = { st: FormState ->
+        guard.attempt {
+            prefill = st
+            newFormKey++
+            nav.navigate(Tab.NEW.route) {
+                popUpTo(nav.graph.findStartDestination().id)
+                launchSingleTop = true
+            }
+        }
+    }
+
+    LaunchedEffect(newRequest, loaded) {
+        if (newRequest != null && loaded != null) {
+            val d = FormState.defaults(settings)
+            startNew(
+                d.copy(
+                    kind = newRequest.kind,
+                    title = newRequest.title,
+                    description = newRequest.description,
+                    date = if (newRequest.kind == KIND_EVENT) d.date ?: LocalDate.now() else null,
+                ),
+            )
+            onHandledNew()
+        }
     }
 
     LaunchedEffect(openItemId, loaded) {
@@ -126,6 +182,7 @@ fun ProtonTodoApp(vm: AppViewModel, openItemId: Long?, onOpenedItem: () -> Unit)
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
@@ -193,27 +250,31 @@ fun ProtonTodoApp(vm: AppViewModel, openItemId: Long?, onOpenedItem: () -> Unit)
                 HomeScreen(items, settings, onOpen = { nav.openItem(it) }, onCheck = complete)
             }
             composable(Tab.NEW.route) {
-                var formKey by remember { mutableIntStateOf(0) }
-                val initial = remember(formKey) { FormState.defaults(settings) }
+                val initial = remember(newFormKey) { prefill ?: FormState.defaults(settings) }
+                LaunchedEffect(newFormKey) { prefill = null }
+                val templates = Lists.templates(items).map {
+                    it.title to FormState.from(it, settings).copy(date = if (it.isEvent) LocalDate.now() else null)
+                }
                 ItemForm(
                     initial = initial,
                     mode = FormMode.NEW,
+                    templates = templates,
                     onDirtyChange = { guard.dirty = it },
                     onSave = { st ->
                         vm.save(st.toItem(Item())) { toast("Saved") }
                         guard.dirty = false
-                        formKey++
+                        newFormKey++
                         nav.goHome()
                     },
                     onDraft = { st ->
                         vm.saveDraft(st.toItem(Item())) { toast("Saved as a draft") }
                         guard.dirty = false
-                        formKey++
+                        newFormKey++
                         nav.goHome()
                     },
                     onDiscard = {
                         guard.dirty = false
-                        formKey++
+                        newFormKey++
                         nav.goHome()
                     },
                 )
@@ -245,6 +306,19 @@ fun ProtonTodoApp(vm: AppViewModel, openItemId: Long?, onOpenedItem: () -> Unit)
                         parent = item.parentId?.let { pid -> items.firstOrNull { it.id == pid } },
                         onOpenItem = { other -> guard.attempt { nav.openItem(other) } },
                         onToggleChild = { c -> if (c.completedAt == null) complete(c) else vm.reopen(c) },
+                        onChecklistTick = { vm.setChecklist(item, it) },
+                        onDuplicate = {
+                            val copy = FormState.from(item, settings)
+                            startNew(copy.copy(checklist = copy.checklist.map { it.copy(done = false) }))
+                        },
+                        onSaveTemplate = { name -> vm.saveTemplate(item, name); toast("Template saved. Pick it at the top of the New form.") },
+                        onResendInvite = { vm.resendInvite(item); toast("Invite sent") },
+                        onDelete = {
+                            guard.dirty = false
+                            vm.delete(item)
+                            nav.popBackStack()
+                            toast("Deleted")
+                        },
                         onDirtyChange = { guard.dirty = it },
                         onSave = { st ->
                             guard.dirty = false

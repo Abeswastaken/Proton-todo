@@ -60,5 +60,21 @@ object Lists {
             .map { (ym, list) -> ym to list.sortedByDescending { it.date } }
     }
 
-    fun drafts(items: List<Item>) = items.filter { it.isDraft }.sortedByDescending { it.updatedAt }
+    fun drafts(items: List<Item>) = items.filter { it.isDraft && !it.isTemplate }.sortedByDescending { it.updatedAt }
+
+    fun templates(items: List<Item>) = items.filter { it.isTemplate }.sortedBy { it.title.lowercase() }
+
+    /** A dated to-do whose due date has passed. */
+    fun isOverdue(item: Item, today: LocalDate): Boolean =
+        item.isTask && !item.isDraft && item.completedAt == null &&
+            (Reminders.occurrence(item, today) ?: item.dateEpochDay?.let(LocalDate::ofEpochDay))?.isBefore(today) == true
+
+    /** Matches the filter chips: null shows everything, "IMPORTANT" only important items, otherwise a category. */
+    fun matches(item: Item, filter: String?): Boolean = when (filter) {
+        null -> true
+        IMPORTANT -> item.important
+        else -> item.category == filter
+    }
+
+    const val IMPORTANT = "IMPORTANT"
 }

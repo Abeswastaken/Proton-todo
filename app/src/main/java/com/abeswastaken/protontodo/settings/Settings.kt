@@ -37,6 +37,12 @@ data class Settings(
     val nudgeEveryDays: Int = 7,
     val homeEventCount: Int = 5,
     val homeTaskCount: Int = 5,
+    /** Sunday evening email of the week ahead. */
+    val lookaheadEnabled: Boolean = false,
+    val autoBackup: Boolean = false,
+    /** A folder the user picked (a document tree URI) for automatic backups. */
+    val backupFolder: String = "",
+    val lastBackupAt: Long = 0,
 ) {
     val organizer get() = inviteOrganizer.ifBlank { fromAddress }
 
@@ -61,6 +67,10 @@ data class Settings(
         put("nudgeEveryDays", nudgeEveryDays)
         put("homeEventCount", homeEventCount)
         put("homeTaskCount", homeTaskCount)
+        put("lookaheadEnabled", lookaheadEnabled)
+        put("autoBackup", autoBackup)
+        put("backupFolder", backupFolder)
+        put("lastBackupAt", lastBackupAt)
     }
 
     companion object {
@@ -85,6 +95,10 @@ data class Settings(
                 nudgeEveryDays = j.optInt("nudgeEveryDays", d.nudgeEveryDays),
                 homeEventCount = j.optInt("homeEventCount", d.homeEventCount),
                 homeTaskCount = j.optInt("homeTaskCount", d.homeTaskCount),
+                lookaheadEnabled = j.optBoolean("lookaheadEnabled", d.lookaheadEnabled),
+                autoBackup = j.optBoolean("autoBackup", d.autoBackup),
+                backupFolder = j.optString("backupFolder", d.backupFolder),
+                lastBackupAt = j.optLong("lastBackupAt", d.lastBackupAt),
             )
         }
     }

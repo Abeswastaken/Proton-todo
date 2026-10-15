@@ -90,6 +90,7 @@ fun TaskRow(
     checked: Boolean,
     important: Boolean = false,
     category: String? = null,
+    overdue: Boolean = false,
     onCheck: () -> Unit,
     onClick: () -> Unit,
 ) {
@@ -111,7 +112,7 @@ fun TaskRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(footnote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(footnote, style = MaterialTheme.typography.bodySmall, color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
