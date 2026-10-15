@@ -9,6 +9,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -34,16 +36,34 @@ interface ItemDao {
     @Delete
     suspend fun delete(item: Item)
 
+    /** Ticking a checklist step saves straight away without counting as an edit. */
+    @Query("UPDATE items SET checklist = :checklist WHERE id = :id")
+    suspend fun setChecklist(id: Long, checklist: String)
+
     @Query("DELETE FROM items")
     suspend fun clear()
 }
 
-@Database(entities = [Item::class], version = 1, exportSchema = true)
+@Database(entities = [Item::class], version = 2, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun items(): ItemDao
 
     companion object {
         fun build(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "proton-todo.db").build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "proton-todo.db")
+                .addMigrations(MIGRATION_1_2)
+                .build()
+
+        /** v1.1.0: linked to-dos, markers, checklists and templates. */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE items ADD COLUMN parentId INTEGER")
+                db.execSQL("ALTER TABLE items ADD COLUMN important INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE items ADD COLUMN category TEXT")
+                db.execSQL("ALTER TABLE items ADD COLUMN pendingTodos TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE items ADD COLUMN checklist TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE items ADD COLUMN isTemplate INTEGER NOT NULL DEFAULT 0")
+            }
+        }
     }
 }

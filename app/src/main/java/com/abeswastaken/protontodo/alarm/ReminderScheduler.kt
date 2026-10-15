@@ -22,6 +22,20 @@ import java.time.ZoneId
 object ReminderScheduler {
     const val ACTION_FIRE = "com.abeswastaken.protontodo.REMINDER"
     const val EXTRA_ID = "itemId"
+    const val ACTION_SNOOZED = "com.abeswastaken.protontodo.SNOOZED"
+
+    /** Brings a snoozed reminder back at [at]. It's separate from the item's own alarm, so that one carries on. */
+    fun snooze(context: Context, id: Long, text: String, at: Long) {
+        val pi = PendingIntent.getBroadcast(
+            context, id.toInt(),
+            Intent(context, ReminderReceiver::class.java).setAction(ACTION_SNOOZED).putExtra(EXTRA_ID, id).putExtra(Notifications.EXTRA_TEXT, text),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val am = context.getSystemService(AlarmManager::class.java)
+        val exact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
+        if (exact) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+        else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+    }
 
     private fun intent(context: Context, id: Long) =
         Intent(context, ReminderReceiver::class.java).setAction(ACTION_FIRE).putExtra(EXTRA_ID, id)
@@ -64,6 +78,21 @@ class ReminderReceiver : BroadcastReceiver() {
             try {
                 when (intent.action) {
                     ReminderScheduler.ACTION_FIRE -> fire(context, intent.getLongExtra(ReminderScheduler.EXTRA_ID, 0))
+                    in Snooze.actions -> {
+                        val id = intent.getLongExtra(ReminderScheduler.EXTRA_ID, 0)
+                        val text = intent.getStringExtra(Notifications.EXTRA_TEXT).orEmpty()
+                        val zone = ZoneId.systemDefault()
+                        val at = Snooze.of(intent.action)!!.target(LocalDateTime.now(zone)).atZone(zone).toInstant().toEpochMilli()
+                        Notifications.cancel(context, id)
+                        ReminderScheduler.snooze(context, id, text, at)
+                    }
+                    ReminderScheduler.ACTION_SNOOZED -> {
+                        val item = context.app.repo.get(intent.getLongExtra(ReminderScheduler.EXTRA_ID, 0))
+                        // Skip it if the item was finished or deleted in the meantime.
+                        if (item != null && !item.isDraft && item.completedAt == null && item.pendingAckAt == null) {
+                            Notifications.showReminder(context, item, intent.getStringExtra(Notifications.EXTRA_TEXT).orEmpty())
+                        }
+                    }
                     Notifications.ACTION_REPOST -> {
                         val item = context.app.repo.get(intent.getLongExtra(ReminderScheduler.EXTRA_ID, 0))
                         if (item?.pendingAckAt != null) Notifications.showFinal(context, item)
@@ -96,7 +125,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 if (item.description.isNotBlank()) appendLine().appendLine(item.description)
                 if (inst.isFinal) appendLine().appendLine("This is the final reminder.")
             }
-            MailQueue.enqueue(context, "Reminder: ${item.title} ($text)", body)
+            MailQueue.enqueue(context, "${if (item.important) "Important reminder" else "Reminder"}: ${item.title} ($text)", body)
         }
         repo.get(id)?.let { ReminderScheduler.reschedule(context, it) }
     }

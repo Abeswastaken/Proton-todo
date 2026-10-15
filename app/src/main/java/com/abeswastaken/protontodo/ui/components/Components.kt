@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.abeswastaken.protontodo.ui.Markers
 
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier) {
@@ -83,7 +84,16 @@ fun RoundCheck(checked: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun TaskRow(title: String, footnote: String, checked: Boolean, onCheck: () -> Unit, onClick: () -> Unit) {
+fun TaskRow(
+    title: String,
+    footnote: String,
+    checked: Boolean,
+    important: Boolean = false,
+    category: String? = null,
+    overdue: Boolean = false,
+    onCheck: () -> Unit,
+    onClick: () -> Unit,
+) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -91,21 +101,32 @@ fun TaskRow(title: String, footnote: String, checked: Boolean, onCheck: () -> Un
         RoundCheck(checked, onCheck)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge,
-                textDecoration = if (checked) TextDecoration.LineThrough else null,
-                color = if (checked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(footnote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Markers(important, category)
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textDecoration = if (checked) TextDecoration.LineThrough else null,
+                    color = if (checked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(footnote, style = MaterialTheme.typography.bodySmall, color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
-fun EventRow(title: String, whenText: String, repeating: Boolean, done: Boolean, onClick: () -> Unit) {
+fun EventRow(
+    title: String,
+    whenText: String,
+    repeating: Boolean,
+    done: Boolean,
+    important: Boolean = false,
+    category: String? = null,
+    onClick: () -> Unit,
+) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -113,13 +134,16 @@ fun EventRow(title: String, whenText: String, repeating: Boolean, done: Boolean,
         Box(Modifier.size(10.dp).background(if (done) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.primary, CircleShape))
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge,
-                textDecoration = if (done) TextDecoration.LineThrough else null,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Markers(important, category)
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textDecoration = if (done) TextDecoration.LineThrough else null,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Text(whenText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (repeating) Icon(Icons.Outlined.Repeat, contentDescription = "Repeats", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))

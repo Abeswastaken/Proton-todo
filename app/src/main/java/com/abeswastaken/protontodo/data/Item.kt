@@ -1,5 +1,6 @@
 package com.abeswastaken.protontodo.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -44,6 +45,17 @@ data class Item(
     val pendingAckAt: Long? = null,
     val calendarUid: String? = null,
     val calendarSequence: Int = 0,
+    /** For a to-do made from an event: that event's id. */
+    val parentId: Long? = null,
+    @ColumnInfo(defaultValue = "0") val important: Boolean = false,
+    /** A [com.abeswastaken.protontodo.ui.Category] name shown as an icon, or null. */
+    val category: String? = null,
+    /** Linked to-dos waiting to be created when this item is saved for real. See [com.abeswastaken.protontodo.domain.LinkedTodo]. */
+    @ColumnInfo(defaultValue = "") val pendingTodos: String = "",
+    /** See [com.abeswastaken.protontodo.domain.Checklist]. */
+    @ColumnInfo(defaultValue = "") val checklist: String = "",
+    /** Templates are stored as drafts too, so nothing schedules or sends for them. */
+    @ColumnInfo(defaultValue = "0") val isTemplate: Boolean = false,
 ) {
     val isTask get() = kind == KIND_TASK
     val isEvent get() = kind == KIND_EVENT

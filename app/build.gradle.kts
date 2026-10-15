@@ -20,6 +20,7 @@ android {
         // Minutes since 2026-01-01, so every build, test or release, is newer than the last.
         versionCode = (System.currentTimeMillis() / 60_000 - 29_453_760).toInt()
         versionName = rootProject.file("version.txt").readText().trim()
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -79,8 +80,11 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.glance.appwidget)
     implementation(libs.android.mail)
     implementation(libs.android.activation)
     debugImplementation(libs.androidx.ui.tooling)
     testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }

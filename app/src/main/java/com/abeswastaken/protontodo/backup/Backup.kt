@@ -2,6 +2,12 @@ package com.abeswastaken.protontodo.backup
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
 import com.abeswastaken.protontodo.app
 import com.abeswastaken.protontodo.data.Item
 import com.abeswastaken.protontodo.settings.Settings
@@ -9,6 +15,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.LocalDate
+import java.util.concurrent.TimeUnit
 
 /** One JSON file with every item and setting. The SMTP token is left out on purpose. */
 object Backup {
@@ -61,6 +69,12 @@ object Backup {
         put("lastReminderAt", i.lastReminderAt ?: JSONObject.NULL)
         put("calendarUid", i.calendarUid ?: JSONObject.NULL)
         put("calendarSequence", i.calendarSequence)
+        put("parentId", i.parentId ?: JSONObject.NULL)
+        put("important", i.important)
+        put("category", i.category ?: JSONObject.NULL)
+        put("pendingTodos", i.pendingTodos)
+        put("checklist", i.checklist)
+        put("isTemplate", i.isTemplate)
     }
 
     private fun JSONObject.longOrNull(k: String) = if (isNull(k) || !has(k)) null else getLong(k)
@@ -93,6 +107,65 @@ object Backup {
             lastReminderAt = j.longOrNull("lastReminderAt"),
             calendarUid = j.stringOrNull("calendarUid"),
             calendarSequence = j.optInt("calendarSequence", 0),
+            parentId = j.longOrNull("parentId"),
+            important = j.optBoolean("important", false),
+            category = j.stringOrNull("category"),
+            pendingTodos = j.optString("pendingTodos"),
+            checklist = j.optString("checklist"),
+            isTemplate = j.optBoolean("isTemplate", false),
         )
     }
+}
+
+/** Weekly backups into a folder the user picked, keeping the newest [KEEP]. */
+object AutoBackup {
+    private const val NAME = "auto-backup"
+    private const val PREFIX = "proton-todo-backup-"
+    private const val KEEP = 8
+
+    fun sync(context: Context, s: Settings, replace: Boolean) {
+        val wm = WorkManager.getInstance(context)
+        if (!s.autoBackup || s.backupFolder.isBlank()) {
+            wm.cancelUniqueWork(NAME)
+            return
+        }
+        val req = PeriodicWorkRequestBuilder<AutoBackupWorker>(7, TimeUnit.DAYS).build()
+        val policy = if (replace) ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE else ExistingPeriodicWorkPolicy.KEEP
+        wm.enqueueUniquePeriodicWork(NAME, policy, req)
+    }
+
+    /** Writes one backup into the chosen folder now. Returns how many items it saved. */
+    suspend fun runNow(context: Context): Int = withContext(Dispatchers.IO) {
+        val store = context.app.settings
+        val tree = Uri.parse(store.current.backupFolder.ifBlank { error("Pick a backup folder first.") })
+        val resolver = context.contentResolver
+        val dir = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        val name = "$PREFIX${LocalDate.now()}-${System.currentTimeMillis() % 100000}.json"
+        val file = DocumentsContract.createDocument(resolver, dir, "application/json", name)
+            ?: error("Couldn't create a file in the backup folder.")
+        val count = Backup.export(context, file)
+        prune(context, tree)
+        store.update { it.copy(lastBackupAt = System.currentTimeMillis()) }
+        count
+    }
+
+    private fun prune(context: Context, tree: Uri) {
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        val cols = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+        val ours = mutableListOf<Pair<String, String>>()
+        context.contentResolver.query(children, cols, null, null, null)?.use { c ->
+            while (c.moveToNext()) {
+                val name = c.getString(1) ?: continue
+                if (name.startsWith(PREFIX)) ours += c.getString(0) to name
+            }
+        }
+        ours.sortedByDescending { it.second }.drop(KEEP).forEach { (docId, _) ->
+            runCatching { DocumentsContract.deleteDocument(context.contentResolver, DocumentsContract.buildDocumentUriUsingTree(tree, docId)) }
+        }
+    }
+}
+
+class AutoBackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result = runCatching { AutoBackup.runNow(applicationContext) }
+        .fold({ Result.success() }, { if (runAttemptCount < 3) Result.retry() else Result.failure() })
 }

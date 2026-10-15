@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Proton To-Do</string>
+    <string name="shortcut_new_task">New to-do</string>
+    <string name="shortcut_new_event">New event</string>
+    <string name="share_label">Add to Proton To-Do</string>
+    <string name="widget_description">Upcoming events and open to-dos</string>
 </resources>

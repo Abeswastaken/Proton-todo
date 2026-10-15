@@ -55,6 +55,8 @@ import com.abeswastaken.protontodo.ui.theme.ThemeMode
 import com.abeswastaken.protontodo.ui.timeText
 import java.time.LocalDate
 
+private const val RELEASES_URL = "https://github.com/Abeswastaken/Proton-todo/releases/latest"
+
 @Composable
 fun SettingsScreen(vm: AppViewModel, items: List<Item>, s: Settings, onOpenDraft: (Item) -> Unit) {
     val context = LocalContext.current
@@ -68,6 +70,16 @@ fun SettingsScreen(vm: AppViewModel, items: List<Item>, s: Settings, onOpenDraft
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) confirmImport = uri
     }
+    var deleteTemplate by remember { mutableStateOf<Item?>(null) }
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(
+                uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+            vm.updateSettings { it.copy(autoBackup = true, backupFolder = uri.toString()) }
+            vm.backupNow(toast)
+        }
+    }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 32.dp)) {
         val drafts = Lists.drafts(items)
@@ -77,6 +89,16 @@ fun SettingsScreen(vm: AppViewModel, items: List<Item>, s: Settings, onOpenDraft
             drafts.forEachIndexed { i, d ->
                 if (i > 0) RowDivider()
                 ValueRow(d.title.ifBlank { "(untitled)" }, "Edited " + dateText(millisToDate(d.updatedAt))) { onOpenDraft(d) }
+            }
+        }
+
+        val templates = Lists.templates(items)
+        SectionLabel("Templates (${templates.size})")
+        Card {
+            if (templates.isEmpty()) EmptyRow("No templates. Open any item and use Save as template under More.")
+            templates.forEachIndexed { i, t ->
+                if (i > 0) RowDivider()
+                ValueRow(t.title, "Delete") { deleteTemplate = t }
             }
         }
 
@@ -191,6 +213,13 @@ fun SettingsScreen(vm: AppViewModel, items: List<Item>, s: Settings, onOpenDraft
             }
         }
 
+        SectionLabel("Weekly look-ahead")
+        Card {
+            SwitchRow("Email the week ahead", s.lookaheadEnabled, "Sunday evenings: the coming week's events and due to-dos") { v ->
+                vm.updateSettings { it.copy(lookaheadEnabled = v) }
+            }
+        }
+
         SectionLabel("Home screen")
         Card {
             ChoiceRow("Upcoming events shown", s.homeEventCount, (1..15).toList(), { it.toString() }) { v -> vm.updateSettings { it.copy(homeEventCount = v) } }
@@ -203,11 +232,44 @@ fun SettingsScreen(vm: AppViewModel, items: List<Item>, s: Settings, onOpenDraft
             ValueRow("Export", "Save a backup file") { exporter.launch("proton-todo-backup-${LocalDate.now()}.json") }
             RowDivider()
             ValueRow("Import", "Restore from a file") { importer.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
+            RowDivider()
+            SwitchRow(
+                "Automatic weekly backup",
+                s.autoBackup && s.backupFolder.isNotBlank(),
+                if (s.lastBackupAt > 0) "Last backup " + dateText(millisToDate(s.lastBackupAt)) + ". Keeps the newest 8." else "Saves a backup file to a folder you pick",
+            ) { on ->
+                if (on && s.backupFolder.isBlank()) folderPicker.launch(null)
+                else vm.updateSettings { it.copy(autoBackup = on) }
+            }
+            if (s.autoBackup && s.backupFolder.isNotBlank()) {
+                RowDivider()
+                ValueRow("Back up now", "") { vm.backupNow(toast) }
+                RowDivider()
+                ValueRow("Change folder", "") { folderPicker.launch(null) }
+            }
+        }
+
+        SectionLabel("About")
+        Card {
+            val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?" }
+            ValueRow("Version", version) {}
+            RowDivider()
+            ValueRow("Get the latest version", "Open releases") {
+                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(RELEASES_URL)))
+            }
         }
     }
 
     if (pickAllDayTime) TimePick(Reminders.time(s.allDayReminderMinutes), onDismiss = { pickAllDayTime = false }) { t ->
         vm.updateSettings { it.copy(allDayReminderMinutes = t.hour * 60 + t.minute) }
+    }
+    deleteTemplate?.let { t ->
+        AlertDialog(
+            onDismissRequest = { deleteTemplate = null },
+            title = { Text("Delete the ${t.title} template?") },
+            confirmButton = { TextButton(onClick = { deleteTemplate = null; vm.deleteTemplate(t) }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { deleteTemplate = null }) { Text("Cancel") } },
+        )
     }
     confirmImport?.let { uri ->
         AlertDialog(

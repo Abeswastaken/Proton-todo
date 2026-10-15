@@ -16,6 +16,7 @@ import com.abeswastaken.protontodo.ack.AckActivity
 import com.abeswastaken.protontodo.data.Item
 import com.abeswastaken.protontodo.domain.Reminders
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
@@ -23,6 +24,7 @@ object Notifications {
     const val CH_REMINDERS = "reminders"
     const val CH_FINAL = "final"
     const val ACTION_REPOST = "com.abeswastaken.protontodo.REPOST"
+    const val EXTRA_TEXT = "text"
 
     fun createChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java)
@@ -60,14 +62,22 @@ object Notifications {
         )
         val n = NotificationCompat.Builder(context, CH_REMINDERS)
             .setSmallIcon(R.drawable.ic_stat_check)
-            .setContentTitle(item.title)
+            .setContentTitle(if (item.important) "\u2757 ${item.title}" else item.title)
             .setContentText(text.replaceFirstChar { it.uppercase() })
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(open)
             .setAutoCancel(true)
+            .apply { Snooze.choices(LocalTime.now()).forEach { addAction(0, it.label, snoozeIntent(context, item, text, it)) } }
             .build()
         context.getSystemService(NotificationManager::class.java).notify(item.id.toInt(), n)
     }
+
+    private fun snoozeIntent(context: Context, item: Item, text: String, choice: Snooze) = PendingIntent.getBroadcast(
+        context, item.id.toInt(),
+        Intent(context, ReminderReceiver::class.java).setAction(choice.action)
+            .putExtra(ReminderScheduler.EXTRA_ID, item.id).putExtra(EXTRA_TEXT, text),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
 
     /** The last reminder: no snooze, and it comes back if swiped away until the challenge is passed. */
     fun showFinal(context: Context, item: Item) {
@@ -101,5 +111,31 @@ object Notifications {
 
     fun cancel(context: Context, id: Long) {
         context.getSystemService(NotificationManager::class.java).cancel(id.toInt())
+    }
+}
+
+/** Snooze buttons on ordinary reminders. Final reminders never get them. */
+enum class Snooze(val label: String, val action: String) {
+    HOUR("1 hour", "com.abeswastaken.protontodo.SNOOZE_HOUR"),
+    TONIGHT("Tonight", "com.abeswastaken.protontodo.SNOOZE_TONIGHT"),
+    TOMORROW("Tomorrow", "com.abeswastaken.protontodo.SNOOZE_TOMORROW");
+
+    /** When the reminder comes back, from [now]. */
+    fun target(now: java.time.LocalDateTime): java.time.LocalDateTime = when (this) {
+        HOUR -> now.plusHours(1)
+        TONIGHT -> now.toLocalDate().atTime(TONIGHT_AT)
+        TOMORROW -> now.toLocalDate().plusDays(1).atTime(TOMORROW_AT)
+    }
+
+    companion object {
+        val TONIGHT_AT: LocalTime = LocalTime.of(20, 0)
+        val TOMORROW_AT: LocalTime = LocalTime.of(9, 0)
+
+        /** "Tonight" only while there's still an evening left to snooze to. */
+        fun choices(now: LocalTime) = entries.filter { it != TONIGHT || now.isBefore(TONIGHT_AT.minusHours(1)) }
+
+        fun of(action: String?) = entries.firstOrNull { it.action == action }
+
+        val actions: List<String?> = entries.map { it.action }
     }
 }

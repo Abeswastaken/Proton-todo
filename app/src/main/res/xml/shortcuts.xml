@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_task"
+        android:shortcutId="new_task"
+        android:shortcutLongLabel="@string/shortcut_new_task"
+        android:shortcutShortLabel="@string/shortcut_new_task">
+        <intent
+            android:action="com.abeswastaken.protontodo.NEW_TASK"
+            android:targetClass="com.abeswastaken.protontodo.MainActivity"
+            android:targetPackage="com.abeswastaken.protontodo" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_event"
+        android:shortcutId="new_event"
+        android:shortcutLongLabel="@string/shortcut_new_event"
+        android:shortcutShortLabel="@string/shortcut_new_event">
+        <intent
+            android:action="com.abeswastaken.protontodo.NEW_EVENT"
+            android:targetClass="com.abeswastaken.protontodo.MainActivity"
+            android:targetPackage="com.abeswastaken.protontodo" />
+    </shortcut>
+</shortcuts>
