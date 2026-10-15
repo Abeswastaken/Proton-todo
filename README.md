@@ -31,7 +31,7 @@ Settings also has **Export** and **Import**, for moving to a new phone or restor
 
 Every push to `main` builds a debug APK in GitHub Actions (see the **Build** workflow's artifacts).
 
-Signed releases come from pushing a tag such as `v0.1.0`. They need these repository secrets:
+Signed releases come from pushing `main` to the `release` branch; the version comes from `version.txt`. They need these repository secrets:
 
 | Secret | What it is |
 | --- | --- |

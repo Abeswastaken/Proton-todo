@@ -1,9 +1,10 @@
 name: Release
 
-# Push a tag like v0.1.0 to build a signed APK and attach it to a GitHub Release.
+# Push main to the `release` branch to build a signed APK and publish it as a GitHub
+# Release tagged with the version in version.txt.
 on:
   push:
-    tags: ["v*"]
+    branches: [release]
 
 permissions:
   contents: write
@@ -26,11 +27,14 @@ jobs:
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-          VERSION_NAME: ${{ github.ref_name }}
-          VERSION_CODE: ${{ github.run_number }}
         run: |
+          VERSION="v$(tr -d '[:space:]' < version.txt)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           ./gradlew assembleRelease
-          mv app/build/outputs/apk/release/app-release.apk "proton-todo-${GITHUB_REF_NAME}.apk"
+          mv app/build/outputs/apk/release/app-release.apk "proton-todo-$VERSION.apk"
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.VERSION }}
+          name: Proton To-Do ${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
           files: proton-todo-*.apk
