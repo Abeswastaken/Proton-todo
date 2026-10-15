@@ -26,14 +26,20 @@ import java.time.YearMonth
 
 private val listPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)
 
-fun taskFootnote(item: Item): String =
-    createdText(item) + (item.dateEpochDay?.let { "  ·  Due " + dateText(LocalDate.ofEpochDay(it)) } ?: "")
+fun taskFootnote(item: Item, byId: Map<Long, Item> = emptyMap()): String =
+    createdText(item) +
+        (item.dateEpochDay?.let { "  ·  Due " + dateText(LocalDate.ofEpochDay(it)) } ?: "") +
+        (item.parentId?.let(byId::get)?.let { "  ·  For " + it.title } ?: "")
+
+/** Important tasks first, then by [then]. */
+private fun importantFirst(then: Comparator<Item>) = compareByDescending<Item> { it.important }.then(then)
 
 @Composable
 fun HomeScreen(items: List<Item>, settings: Settings, onOpen: (Item) -> Unit, onCheck: (Item) -> Unit) {
     val today = LocalDate.now()
     val events = Lists.upcomingEvents(items, today).take(settings.homeEventCount)
-    val tasks = Lists.openTasks(items).sortedBy { it.createdAt }.take(settings.homeTaskCount)
+    val tasks = Lists.openTasks(items).sortedWith(importantFirst(compareBy<Item> { it.createdAt })).take(settings.homeTaskCount)
+    val byId = items.associateBy { it.id }
     LazyColumn(Modifier, contentPadding = listPadding) {
         item { SectionLabel("Upcoming events") }
         item {
@@ -41,7 +47,7 @@ fun HomeScreen(items: List<Item>, settings: Settings, onOpen: (Item) -> Unit, on
                 if (events.isEmpty()) EmptyRow("Nothing coming up.")
                 events.forEachIndexed { i, d ->
                     if (i > 0) RowDivider()
-                    EventRow(d.item.title, dateTimeText(d.item, d.date), d.item.isRepeating, false) { onOpen(d.item) }
+                    EventRow(d.item.title, dateTimeText(d.item, d.date), d.item.isRepeating, false, d.item.important, d.item.category) { onOpen(d.item) }
                 }
             }
         }
@@ -51,7 +57,7 @@ fun HomeScreen(items: List<Item>, settings: Settings, onOpen: (Item) -> Unit, on
                 if (tasks.isEmpty()) EmptyRow("All caught up.")
                 tasks.forEachIndexed { i, t ->
                     if (i > 0) RowDivider()
-                    TaskRow(t.title, taskFootnote(t), false, onCheck = { onCheck(t) }, onClick = { onOpen(t) })
+                    TaskRow(t.title, taskFootnote(t, byId), false, t.important, t.category, onCheck = { onCheck(t) }, onClick = { onOpen(t) })
                 }
             }
         }
@@ -60,7 +66,8 @@ fun HomeScreen(items: List<Item>, settings: Settings, onOpen: (Item) -> Unit, on
 
 @Composable
 fun TodoScreen(items: List<Item>, onOpen: (Item) -> Unit, onCheck: (Item) -> Unit, onUncheck: (Item) -> Unit) {
-    val open = Lists.openTasks(items).sortedByDescending { it.createdAt }
+    val open = Lists.openTasks(items).sortedWith(importantFirst(compareByDescending<Item> { it.createdAt }))
+    val byId = items.associateBy { it.id }
     val done = Lists.completedByMonth(items)
     val thisMonth = YearMonth.now()
     LazyColumn(contentPadding = listPadding) {
@@ -70,7 +77,7 @@ fun TodoScreen(items: List<Item>, onOpen: (Item) -> Unit, onCheck: (Item) -> Uni
                 if (open.isEmpty()) EmptyRow("No open tasks.")
                 open.forEachIndexed { i, t ->
                     if (i > 0) RowDivider()
-                    TaskRow(t.title, taskFootnote(t), false, onCheck = { onCheck(t) }, onClick = { onOpen(t) })
+                    TaskRow(t.title, taskFootnote(t, byId), false, t.important, t.category, onCheck = { onCheck(t) }, onClick = { onOpen(t) })
                 }
             }
         }
@@ -83,6 +90,8 @@ fun TodoScreen(items: List<Item>, onOpen: (Item) -> Unit, onCheck: (Item) -> Uni
                         t.title,
                         "Completed " + dateText(millisToDate(t.completedAt!!)),
                         true,
+                        t.important,
+                        t.category,
                         onCheck = { onUncheck(t) },
                         onClick = { onOpen(t) },
                     )
@@ -106,7 +115,7 @@ fun EventsScreen(items: List<Item>, onOpen: (Item) -> Unit) {
                 if (soon.isEmpty()) EmptyRow("No events in the next 30 days.")
                 soon.forEachIndexed { i, d ->
                     if (i > 0) RowDivider()
-                    EventRow(d.item.title, dateTimeText(d.item, d.date), d.item.isRepeating, false) { onOpen(d.item) }
+                    EventRow(d.item.title, dateTimeText(d.item, d.date), d.item.isRepeating, false, d.item.important, d.item.category) { onOpen(d.item) }
                 }
             }
         }
@@ -114,7 +123,7 @@ fun EventsScreen(items: List<Item>, onOpen: (Item) -> Unit) {
             CollapsibleSection("later", "Later", later.size, initiallyOpen = false) {
                 later.forEachIndexed { i, d ->
                     if (i > 0) RowDivider()
-                    EventRow(d.item.title, dateTimeText(d.item, d.date), d.item.isRepeating, false) { onOpen(d.item) }
+                    EventRow(d.item.title, dateTimeText(d.item, d.date), d.item.isRepeating, false, d.item.important, d.item.category) { onOpen(d.item) }
                 }
             }
         }
@@ -123,7 +132,7 @@ fun EventsScreen(items: List<Item>, onOpen: (Item) -> Unit) {
             CollapsibleSection("past-$ym", monthTitle(ym), list.size, initiallyOpen = false) {
                 list.forEachIndexed { i, d ->
                     if (i > 0) RowDivider()
-                    EventRow(d.item.title, dateTimeText(d.item, d.date), false, d.item.completedAt != null) { onOpen(d.item) }
+                    EventRow(d.item.title, dateTimeText(d.item, d.date), false, d.item.completedAt != null, d.item.important, d.item.category) { onOpen(d.item) }
                 }
             }
         }

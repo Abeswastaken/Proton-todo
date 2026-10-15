@@ -27,6 +27,7 @@ class Repository(
         val firstRealSave = existing == null || existing.isDraft
         var next = item.copy(
             isDraft = false,
+            pendingTodos = "",
             updatedAt = now,
             createdAt = if (firstRealSave) now else existing!!.createdAt,
             lastReminderAt = if (firstRealSave) null else item.lastReminderAt,
@@ -42,9 +43,17 @@ class Repository(
         }
         val id = if (existing == null) dao.insert(next.copy(id = 0)) else { dao.update(next); next.id }
         next = next.copy(id = id)
+        createLinkedTodos(item.copy(id = id))
         if (sendInvite) MailQueue.invite(context, next, settings.current)
         ReminderScheduler.reschedule(context, next)
         return id
+    }
+
+    /** Creates the undated to-dos waiting on an event, such as "Print the new insurance card". */
+    private suspend fun createLinkedTodos(event: Item) {
+        event.pendingTodos.lines().map { it.trim() }.filter { it.isNotEmpty() }.forEach {
+            save(Item(kind = KIND_TASK, title = it, parentId = event.id, addToCalendar = false, emailReminders = event.emailReminders))
+        }
     }
 
     /** Drafts stay local: no reminders, emails or calendar invites. */

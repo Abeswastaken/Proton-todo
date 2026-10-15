@@ -61,6 +61,10 @@ object Backup {
         put("lastReminderAt", i.lastReminderAt ?: JSONObject.NULL)
         put("calendarUid", i.calendarUid ?: JSONObject.NULL)
         put("calendarSequence", i.calendarSequence)
+        put("parentId", i.parentId ?: JSONObject.NULL)
+        put("important", i.important)
+        put("category", i.category ?: JSONObject.NULL)
+        put("pendingTodos", i.pendingTodos)
     }
 
     private fun JSONObject.longOrNull(k: String) = if (isNull(k) || !has(k)) null else getLong(k)
@@ -93,6 +97,10 @@ object Backup {
             lastReminderAt = j.longOrNull("lastReminderAt"),
             calendarUid = j.stringOrNull("calendarUid"),
             calendarSequence = j.optInt("calendarSequence", 0),
+            parentId = j.longOrNull("parentId"),
+            important = j.optBoolean("important", false),
+            category = j.stringOrNull("category"),
+            pendingTodos = j.optString("pendingTodos"),
         )
     }
 }

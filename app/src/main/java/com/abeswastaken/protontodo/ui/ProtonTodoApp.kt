@@ -93,6 +93,12 @@ class LeaveGuard {
 
 private fun NavHostController.openItem(item: Item) = navigate(if (item.isDraft) "draft/${item.id}" else "item/${item.id}")
 
+/** Back to Home, clearing whatever form was open. */
+private fun NavHostController.goHome() = navigate(Tab.HOME.route) {
+    popUpTo(graph.findStartDestination().id) { inclusive = false }
+    launchSingleTop = true
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProtonTodoApp(vm: AppViewModel, openItemId: Long?, onOpenedItem: () -> Unit) {
@@ -197,13 +203,19 @@ fun ProtonTodoApp(vm: AppViewModel, openItemId: Long?, onOpenedItem: () -> Unit)
                         vm.save(st.toItem(Item())) { toast("Saved") }
                         guard.dirty = false
                         formKey++
+                        nav.goHome()
                     },
                     onDraft = { st ->
                         vm.saveDraft(st.toItem(Item())) { toast("Saved as a draft") }
                         guard.dirty = false
                         formKey++
+                        nav.goHome()
                     },
-                    onDiscard = { guard.attempt { formKey++ } },
+                    onDiscard = {
+                        guard.dirty = false
+                        formKey++
+                        nav.goHome()
+                    },
                 )
             }
             composable(Tab.TODO.route) {
@@ -229,8 +241,16 @@ fun ProtonTodoApp(vm: AppViewModel, openItemId: Long?, onOpenedItem: () -> Unit)
                         initial = initial,
                         mode = FormMode.DETAIL,
                         completed = item.completedAt != null,
+                        children = items.filter { it.parentId == item.id && !it.isDraft }.sortedBy { it.createdAt },
+                        parent = item.parentId?.let { pid -> items.firstOrNull { it.id == pid } },
+                        onOpenItem = { other -> guard.attempt { nav.openItem(other) } },
+                        onToggleChild = { c -> if (c.completedAt == null) complete(c) else vm.reopen(c) },
                         onDirtyChange = { guard.dirty = it },
-                        onSave = { st -> vm.save(st.toItem(item)) { toast("Updated") } },
+                        onSave = { st ->
+                            guard.dirty = false
+                            vm.save(st.toItem(item)) { toast("Updated") }
+                            nav.popBackStack()
+                        },
                         onDiscard = { guard.attempt { nav.popBackStack() } },
                         onComplete = {
                             guard.dirty = false
@@ -256,12 +276,12 @@ fun ProtonTodoApp(vm: AppViewModel, openItemId: Long?, onOpenedItem: () -> Unit)
                         onSave = { st ->
                             guard.dirty = false
                             vm.save(st.toItem(draft)) { toast("Saved") }
-                            nav.popBackStack()
+                            nav.goHome()
                         },
                         onDraft = { st ->
                             guard.dirty = false
                             vm.saveDraft(st.toItem(draft)) { toast("Draft updated") }
-                            nav.popBackStack()
+                            nav.goHome()
                         },
                         onDiscard = { confirmDelete = true },
                     )

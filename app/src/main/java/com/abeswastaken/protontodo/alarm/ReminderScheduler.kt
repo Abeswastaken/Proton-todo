@@ -96,7 +96,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 if (item.description.isNotBlank()) appendLine().appendLine(item.description)
                 if (inst.isFinal) appendLine().appendLine("This is the final reminder.")
             }
-            MailQueue.enqueue(context, "Reminder: ${item.title} ($text)", body)
+            MailQueue.enqueue(context, "${if (item.important) "Important reminder" else "Reminder"}: ${item.title} ($text)", body)
         }
         repo.get(id)?.let { ReminderScheduler.reschedule(context, it) }
     }

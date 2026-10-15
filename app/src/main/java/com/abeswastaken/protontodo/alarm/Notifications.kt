@@ -60,7 +60,7 @@ object Notifications {
         )
         val n = NotificationCompat.Builder(context, CH_REMINDERS)
             .setSmallIcon(R.drawable.ic_stat_check)
-            .setContentTitle(item.title)
+            .setContentTitle(if (item.important) "\u2757 ${item.title}" else item.title)
             .setContentText(text.replaceFirstChar { it.uppercase() })
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(open)

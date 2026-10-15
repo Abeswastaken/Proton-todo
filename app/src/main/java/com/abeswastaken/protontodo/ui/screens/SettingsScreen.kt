@@ -55,6 +55,8 @@ import com.abeswastaken.protontodo.ui.theme.ThemeMode
 import com.abeswastaken.protontodo.ui.timeText
 import java.time.LocalDate
 
+private const val RELEASES_URL = "https://github.com/Abeswastaken/Proton-todo/releases/latest"
+
 @Composable
 fun SettingsScreen(vm: AppViewModel, items: List<Item>, s: Settings, onOpenDraft: (Item) -> Unit) {
     val context = LocalContext.current
@@ -203,6 +205,16 @@ fun SettingsScreen(vm: AppViewModel, items: List<Item>, s: Settings, onOpenDraft
             ValueRow("Export", "Save a backup file") { exporter.launch("proton-todo-backup-${LocalDate.now()}.json") }
             RowDivider()
             ValueRow("Import", "Restore from a file") { importer.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
+        }
+
+        SectionLabel("About")
+        Card {
+            val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?" }
+            ValueRow("Version", version) {}
+            RowDivider()
+            ValueRow("Get the latest version", "Open releases") {
+                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(RELEASES_URL)))
+            }
         }
     }
 

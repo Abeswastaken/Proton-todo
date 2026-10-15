@@ -59,6 +59,8 @@ import com.abeswastaken.protontodo.ui.components.ChoiceRow
 import com.abeswastaken.protontodo.ui.components.RowDivider
 import com.abeswastaken.protontodo.ui.components.SectionLabel
 import com.abeswastaken.protontodo.ui.components.SwitchRow
+import com.abeswastaken.protontodo.ui.components.TaskRow
+import com.abeswastaken.protontodo.ui.Category
 import com.abeswastaken.protontodo.ui.components.ValueRow
 import com.abeswastaken.protontodo.ui.dateText
 import com.abeswastaken.protontodo.ui.timeText
@@ -85,7 +87,16 @@ data class FormState(
     val email: Boolean = true,
     val repeat: RepeatSpec? = null,
     val extendedDays: Int = 14,
+    val important: Boolean = false,
+    val category: String? = null,
+    /** Titles of to-dos to create for this event when it's saved. */
+    val newTodos: List<String> = emptyList(),
 ) {
+    val kindName get() = if (kind == KIND_EVENT) "event" else "to-do"
+
+    /** The linked to-dos worth creating: events only, blank rows skipped. */
+    val todosToCreate get() = if (kind == KIND_EVENT) newTodos.map { it.trim() }.filter { it.isNotEmpty() } else emptyList()
+
     val valid get() = title.isNotBlank() && (kind == KIND_TASK || date != null)
 
     fun toItem(base: Item): Item = base.copy(
@@ -102,6 +113,9 @@ data class FormState(
         emailReminders = email,
         repeatRule = if (date == null) null else repeat?.toRrule(date),
         extendedReminderDays = if (repeat == null) 0 else extendedDays,
+        important = important,
+        category = category,
+        pendingTodos = todosToCreate.joinToString("\n"),
     )
 
     companion object {
@@ -131,6 +145,9 @@ data class FormState(
             email = item.emailReminders,
             repeat = RepeatSpec.parse(item.repeatRule),
             extendedDays = if (item.extendedReminderDays > 0) item.extendedReminderDays else s.extendedReminderDays,
+            important = item.important,
+            category = item.category,
+            newTodos = item.pendingTodos.lines().filter { it.isNotBlank() },
         )
     }
 }
@@ -164,6 +181,12 @@ fun ItemForm(
     initial: FormState,
     mode: FormMode,
     completed: Boolean = false,
+    /** To-dos already linked to this event. */
+    children: List<Item> = emptyList(),
+    /** The event this to-do was made for. */
+    parent: Item? = null,
+    onOpenItem: (Item) -> Unit = {},
+    onToggleChild: (Item) -> Unit = {},
     onDirtyChange: (Boolean) -> Unit,
     onSave: (FormState) -> Unit,
     onDraft: (FormState) -> Unit = {},
@@ -177,6 +200,7 @@ fun ItemForm(
     var pickTime by remember { mutableStateOf(false) }
     var pickAllDayTime by remember { mutableStateOf(false) }
     var customReminderIndex by remember { mutableStateOf<Int?>(null) }
+    var confirm by remember { mutableStateOf<Confirm?>(null) }
     val dirty = st != initial
 
     LaunchedEffect(dirty) { onDirtyChange(dirty) }
@@ -227,6 +251,22 @@ fun ItemForm(
             TextButton(onClick = { showDescription = true }) {
                 Icon(Icons.Outlined.Add, contentDescription = null)
                 Text("Add description")
+            }
+        }
+
+        if (parent != null) {
+            SectionLabel("For event")
+            Card {
+                ValueRow(parent.title, parent.dateEpochDay?.let { dateText(LocalDate.ofEpochDay(it)) } ?: "") { onOpenItem(parent) }
+            }
+        }
+
+        SectionLabel("Marker")
+        Card {
+            SwitchRow("Important", st.important, "Shows a red ! in front of the title") { st = st.copy(important = it) }
+            RowDivider()
+            ChoiceRow("Icon", Category.of(st.category), listOf<Category?>(null) + Category.entries, { it?.label ?: "None" }) {
+                st = st.copy(category = it?.name)
             }
         }
 
@@ -314,26 +354,90 @@ fun ItemForm(
             }
         }
 
+        if (st.kind == KIND_EVENT) {
+            SectionLabel("Linked to-dos")
+            Card {
+                children.forEach { c ->
+                    TaskRow(c.title, if (c.completedAt != null) "Done" else "Open", c.completedAt != null, c.important, c.category,
+                        onCheck = { onToggleChild(c) }, onClick = { onOpenItem(c) })
+                    RowDivider()
+                }
+                st.newTodos.forEachIndexed { i, t ->
+                    Row(Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = t,
+                            onValueChange = { v -> st = st.copy(newTodos = st.newTodos.toMutableList().also { it[i] = v }) },
+                            placeholder = { Text("e.g. Print the new insurance card") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = { st = st.copy(newTodos = st.newTodos.filterIndexed { j, _ -> j != i }) }) {
+                            Icon(Icons.Outlined.Close, contentDescription = "Remove to-do")
+                        }
+                    }
+                }
+                TextButton(onClick = { st = st.copy(newTodos = st.newTodos + "") }, modifier = Modifier.padding(start = 4.dp)) {
+                    Icon(Icons.Outlined.Add, contentDescription = null)
+                    Text("Add a to-do for this event")
+                }
+            }
+        }
+
         Spacer(Modifier.height(20.dp))
         when (mode) {
             FormMode.NEW, FormMode.DRAFT -> {
-                Button(onClick = { onSave(st) }, enabled = st.valid, modifier = Modifier.fillMaxWidth()) { Text("Save") }
+                Button(
+                    onClick = { confirm = Confirm("Save this ${st.kindName}?", "Save", savedText(st, isNew = true)) { onSave(st) } },
+                    enabled = st.valid,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Save") }
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { onDraft(st) }, enabled = st.title.isNotBlank(), modifier = Modifier.weight(1f)) { Text("Draft") }
-                    OutlinedButton(onClick = onDiscard, modifier = Modifier.weight(1f)) { Text(if (mode == FormMode.DRAFT) "Delete draft" else "Discard") }
+                    OutlinedButton(
+                        onClick = { confirm = Confirm("Save as a draft?", "Save draft", "Drafts stay on this phone with no reminders or invites. Find them in Settings.") { onDraft(st) } },
+                        enabled = st.title.isNotBlank(),
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Draft") }
+                    if (mode == FormMode.DRAFT) {
+                        OutlinedButton(onClick = onDiscard, modifier = Modifier.weight(1f)) { Text("Delete draft") }
+                    } else {
+                        OutlinedButton(
+                            onClick = { confirm = Confirm("Discard this ${st.kindName}?", "Discard", "What you entered will be cleared.") { onDiscard() } },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Discard") }
+                    }
                 }
             }
             FormMode.DETAIL -> {
-                Button(onClick = { onSave(st) }, enabled = dirty && st.valid, modifier = Modifier.fillMaxWidth()) { Text("Update") }
+                Button(
+                    onClick = { confirm = Confirm("Save changes?", "Update", savedText(st, isNew = false)) { onSave(st) } },
+                    enabled = dirty && st.valid,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Update") }
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onDiscard, modifier = Modifier.weight(1f)) { Text("Close") }
-                    if (completed) OutlinedButton(onClick = onReopen, modifier = Modifier.weight(1f)) { Text("Reopen") }
-                    else OutlinedButton(onClick = onComplete, modifier = Modifier.weight(1f)) { Text("Completed") }
+                    if (completed) OutlinedButton(
+                        onClick = { confirm = Confirm("Reopen this ${st.kindName}?", "Reopen", null, onReopen) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Reopen") }
+                    else OutlinedButton(
+                        onClick = { confirm = Confirm("Mark as completed?", "Completed", null, onComplete) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Completed") }
                 }
             }
         }
     }
 
+    confirm?.let { c ->
+        AlertDialog(
+            onDismissRequest = { confirm = null },
+            title = { Text(c.title) },
+            text = if (c.text != null) { { Text(c.text) } } else null,
+            confirmButton = { TextButton(onClick = { confirm = null; c.action() }) { Text(c.button) } },
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text("Keep editing") } },
+        )
+    }
     if (pickDate) DatePick(st.date, onDismiss = { pickDate = false }) { st = st.copy(date = it) }
     if (pickTime) TimePick(st.time ?: LocalTime.of(9, 0), onDismiss = { pickTime = false }) { st = st.copy(time = it) }
     if (pickAllDayTime) TimePick(Reminders.time(st.allDayMinutes), onDismiss = { pickAllDayTime = false }) {
@@ -344,6 +448,17 @@ fun ItemForm(
             st = st.copy(reminders = st.reminders.toMutableList().also { l -> if (i < l.size) l[i] = "C${d.toEpochDay()}" })
         }
     }
+}
+
+/** A "are you sure?" prompt for a form button, so a stray tap never loses your place. */
+private class Confirm(val title: String, val button: String, val text: String?, val action: () -> Unit)
+
+private fun savedText(st: FormState, isNew: Boolean): String? {
+    val parts = buildList {
+        if (isNew && st.date != null && st.addToCalendar) add("a calendar invite will be emailed")
+        if (st.todosToCreate.isNotEmpty()) add("${st.todosToCreate.size} linked to-do${if (st.todosToCreate.size > 1) "s" else ""} will be added")
+    }
+    return if (parts.isEmpty()) null else parts.joinToString(", ").replaceFirstChar { it.uppercase() } + "."
 }
 
 private enum class Preset(val label: String) { DAILY("Daily"), WEEKLY("Weekly"), MONTHLY("Monthly"), YEARLY("Yearly"), CUSTOM("Custom") }
