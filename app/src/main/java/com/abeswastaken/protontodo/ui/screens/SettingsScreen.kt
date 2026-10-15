@@ -108,14 +108,14 @@ fun SettingsScreen(vm: AppViewModel, items: List<Item>, s: Settings, onOpenDraft
                 )
                 OutlinedTextField(
                     value = to, onValueChange = { to = it }, singleLine = true,
-                    label = { Text("Send to (your Proton address)") },
+                    label = { Text("Send to (a real address on your Proton account)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = organizer, onValueChange = { organizer = it }, singleLine = true,
                     label = { Text("Invite organizer (optional)") },
-                    supportingText = { Text("Shown as the organizer on calendar invites. Leave blank to use the send-from address.") },
+                    supportingText = { Text("Use an address that isn't on your Proton account, like a catch-all on your domain, so Proton treats invites as coming from someone else. To add an event, open its invite email and tap the calendar icon.") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.fillMaxWidth(),
                 )
