@@ -99,6 +99,7 @@ fun SettingsScreen(vm: AppViewModel, items: List<Item>, s: Settings, onOpenDraft
                 var from by remember(s.fromAddress) { mutableStateOf(s.fromAddress) }
                 var to by remember(s.toAddress) { mutableStateOf(s.toAddress) }
                 var token by remember { mutableStateOf("") }
+                var organizer by remember(s.inviteOrganizer) { mutableStateOf(s.inviteOrganizer) }
                 OutlinedTextField(
                     value = from, onValueChange = { from = it }, singleLine = true,
                     label = { Text("Send from (your custom-domain address)") },
@@ -112,16 +113,23 @@ fun SettingsScreen(vm: AppViewModel, items: List<Item>, s: Settings, onOpenDraft
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
+                    value = organizer, onValueChange = { organizer = it }, singleLine = true,
+                    label = { Text("Invite organizer (optional)") },
+                    supportingText = { Text("Shown as the organizer on calendar invites. Leave blank to use the send-from address.") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
                     value = token, onValueChange = { token = it }, singleLine = true,
                     label = { Text(if (s.hasToken) "SMTP token (saved; type to replace)" else "SMTP token") },
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                val changed = from.trim() != s.fromAddress || to.trim() != s.toAddress || token.isNotBlank()
+                val changed = from.trim() != s.fromAddress || to.trim() != s.toAddress || organizer.trim() != s.inviteOrganizer || token.isNotBlank()
                 OutlinedButton(
                     enabled = changed,
                     onClick = {
-                        vm.updateSettings { it.copy(fromAddress = from.trim(), toAddress = to.trim()) }
+                        vm.updateSettings { it.copy(fromAddress = from.trim(), toAddress = to.trim(), inviteOrganizer = organizer.trim()) }
                         if (token.isNotBlank()) vm.setToken(token)
                         token = ""
                         toast("Email settings saved.")

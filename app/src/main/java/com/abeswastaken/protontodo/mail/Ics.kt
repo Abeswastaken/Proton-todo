@@ -17,7 +17,7 @@ object Ics {
     private val localFmt = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
     private val utcFmt = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
 
-    fun invite(item: Item, from: String, to: String, zone: ZoneId = ZoneId.systemDefault()): String {
+    fun invite(item: Item, organizer: String, to: String, zone: ZoneId = ZoneId.systemDefault()): String {
         val date = LocalDate.ofEpochDay(requireNotNull(item.dateEpochDay))
         val lines = mutableListOf(
             "BEGIN:VCALENDAR",
@@ -42,8 +42,8 @@ object Ics {
         item.repeatRule?.let { lines += "RRULE:$it" }
         lines += "SUMMARY:${escape(item.title)}"
         if (item.description.isNotBlank()) lines += "DESCRIPTION:${escape(item.description.take(2000))}"
-        lines += "ORGANIZER;CN=Proton To-Do:mailto:$from"
-        lines += "ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=FALSE:mailto:$to"
+        lines += "ORGANIZER;CN=Proton To-Do:mailto:$organizer"
+        lines += "ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:$to"
         lines += "STATUS:CONFIRMED"
         lines += "END:VEVENT"
         lines += "END:VCALENDAR"

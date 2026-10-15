@@ -21,6 +21,8 @@ data class Settings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     val fromAddress: String = "",
     val toAddress: String = "",
+    /** Organizer on calendar invites. Blank means the from address. */
+    val inviteOrganizer: String = "",
     val hasToken: Boolean = false,
     val defaultKind: String = KIND_TASK,
     val defaultReminder: String = "D2",
@@ -36,6 +38,8 @@ data class Settings(
     val homeEventCount: Int = 5,
     val homeTaskCount: Int = 5,
 ) {
+    val organizer get() = inviteOrganizer.ifBlank { fromAddress }
+
     val emailReady get() = fromAddress.isNotBlank() && toAddress.isNotBlank() && hasToken
 
     /** Everything except the token, which never leaves the phone. */
@@ -43,6 +47,7 @@ data class Settings(
         put("theme", theme.name)
         put("fromAddress", fromAddress)
         put("toAddress", toAddress)
+        put("inviteOrganizer", inviteOrganizer)
         put("defaultKind", defaultKind)
         put("defaultReminder", defaultReminder)
         put("defaultDayOf", defaultDayOf)
@@ -65,6 +70,7 @@ data class Settings(
                 theme = runCatching { ThemeMode.valueOf(j.optString("theme")) }.getOrDefault(d.theme),
                 fromAddress = j.optString("fromAddress", d.fromAddress),
                 toAddress = j.optString("toAddress", d.toAddress),
+                inviteOrganizer = j.optString("inviteOrganizer", d.inviteOrganizer),
                 hasToken = hasToken,
                 defaultKind = j.optString("defaultKind", d.defaultKind),
                 defaultReminder = j.optString("defaultReminder", d.defaultReminder),

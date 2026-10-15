@@ -42,7 +42,7 @@ object MailQueue {
 
     fun invite(context: Context, item: Item, s: Settings) {
         if (s.fromAddress.isBlank() || s.toAddress.isBlank()) return
-        val ics = Ics.invite(item, s.fromAddress, s.toAddress)
+        val ics = Ics.invite(item, s.organizer, s.toAddress)
         val date = LocalDate.ofEpochDay(item.dateEpochDay ?: return)
         val whenText = date.format(DateTimeFormatter.ofPattern("EEE, MMM d, yyyy")) +
             (item.timeMinutes?.let { " at " + Reminders.time(it).format(DateTimeFormatter.ofPattern("h:mm a")) } ?: "")

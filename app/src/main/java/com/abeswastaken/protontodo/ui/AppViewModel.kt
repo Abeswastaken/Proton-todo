@@ -61,7 +61,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             dateEpochDay = LocalDate.now().plusDays(1).toEpochDay(),
                             calendarUid = "${UUID.randomUUID()}@protontodo",
                         )
-                        Mailer.send(s.fromAddress, s.toAddress, token, "Invitation: ${sample.title}", sample.description, Ics.invite(sample, s.fromAddress, s.toAddress))
+                        Mailer.send(s.fromAddress, s.toAddress, token, "Invitation: ${sample.title}", sample.description, Ics.invite(sample, s.organizer, s.toAddress))
                         "Test invite sent. It should appear in Proton Calendar tomorrow."
                     } else {
                         Mailer.send(s.fromAddress, s.toAddress, token, "Proton To-Do test", "Email from Proton To-Do is working.")

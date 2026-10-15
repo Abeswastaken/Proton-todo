@@ -46,18 +46,9 @@ object Mailer {
                 dataHandler = DataHandler(ByteArrayDataSource(ics, "text/calendar; charset=UTF-8; method=REQUEST"))
                 setHeader("Content-Class", "urn:content-classes:calendarmessage")
             }
-            val invite = MimeBodyPart().apply {
-                dataHandler = DataHandler(ByteArrayDataSource(ics, "application/ics; name=invite.ics"))
-                fileName = "invite.ics"
-            }
-            val alt = MimeMultipart("alternative").apply {
+            msg.setContent(MimeMultipart("alternative").apply {
                 addBodyPart(text)
                 addBodyPart(cal)
-            }
-            val altPart = MimeBodyPart().apply { setContent(alt) }
-            msg.setContent(MimeMultipart("mixed").apply {
-                addBodyPart(altPart)
-                addBodyPart(invite)
             })
         }
         Transport.send(msg)
