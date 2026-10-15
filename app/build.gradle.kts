@@ -37,6 +37,10 @@ android {
             isMinifyEnabled = false
             if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
         }
+        // Test builds use the same key when it's available, so they install over each other.
+        debug {
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
