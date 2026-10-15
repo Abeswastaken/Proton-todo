@@ -17,8 +17,9 @@ android {
         applicationId = "com.abeswastaken.protontodo"
         minSdk = 29
         targetSdk = 35
-        versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = System.getenv("VERSION_NAME") ?: "0.1.0"
+        // Minutes since 2026-01-01, so every build, test or release, is newer than the last.
+        versionCode = (System.currentTimeMillis() / 60_000 - 29_453_760).toInt()
+        versionName = rootProject.file("version.txt").readText().trim()
     }
 
     signingConfigs {
