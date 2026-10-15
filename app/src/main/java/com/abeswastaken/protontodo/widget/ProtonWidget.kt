@@ -2,11 +2,16 @@ package com.abeswastaken.protontodo.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.ColorFilter
 import androidx.glance.GlanceTheme
+import androidx.glance.Image
+import androidx.glance.ImageProvider
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
@@ -28,15 +33,16 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
+import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.abeswastaken.protontodo.MainActivity
+import com.abeswastaken.protontodo.R
 import com.abeswastaken.protontodo.app
 import com.abeswastaken.protontodo.data.Item
 import com.abeswastaken.protontodo.ui.Lists
-import com.abeswastaken.protontodo.ui.dateTimeText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,41 +50,46 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-/** Home screen widget: the next few events and open to-dos. Tap a circle to complete a to-do. */
+/** Home screen widget: open to-dos (Proton Calendar covers events). Tap a circle to complete one. */
 class ProtonWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val items = context.app.repo.all()
-        provideContent { GlanceTheme { Content(items) } }
+        val repo = context.app.repo
+        val first = repo.all()
+        provideContent {
+            // Live while the widget session is open, so changes made in the app show up straight away.
+            val items by repo.items.collectAsState(initial = first)
+            GlanceTheme { Content(items) }
+        }
     }
 
     @Composable
     private fun Content(items: List<Item>) {
         val today = LocalDate.now()
-        val events = Lists.upcomingEvents(items, today).take(3)
         val tasks = Lists.openTasks(items)
             .sortedWith(compareByDescending<Item> { Lists.isOverdue(it, today) }.thenByDescending { it.important }.thenBy { it.createdAt })
-            .take(6)
+            .take(12)
         val primary = GlanceTheme.colors.onSurface
         val muted = GlanceTheme.colors.onSurfaceVariant
         Column(
             GlanceModifier.fillMaxSize().background(GlanceTheme.colors.widgetBackground).cornerRadius(16.dp).padding(12.dp),
         ) {
-            Text(
-                "Proton To-Do",
-                style = TextStyle(color = GlanceTheme.colors.primary, fontWeight = FontWeight.Bold, fontSize = 14.sp),
-                modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()),
-            )
+            Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "To-Do (${tasks.size})",
+                    style = TextStyle(color = GlanceTheme.colors.primary, fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                    modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity<MainActivity>()),
+                )
+                Image(
+                    provider = ImageProvider(R.drawable.ic_widget_refresh),
+                    contentDescription = "Refresh",
+                    colorFilter = ColorFilter.tint(GlanceTheme.colors.primary),
+                    modifier = GlanceModifier.size(28.dp).padding(4.dp).clickable(actionRunCallback<RefreshAction>()),
+                )
+            }
             Spacer(GlanceModifier.height(6.dp))
             LazyColumn {
-                if (events.isEmpty() && tasks.isEmpty()) {
+                if (tasks.isEmpty()) {
                     item { Text("All caught up.", style = TextStyle(color = muted, fontSize = 13.sp)) }
-                }
-                items(events.size) { i ->
-                    val d = events[i]
-                    Column(GlanceModifier.fillMaxWidth().padding(vertical = 3.dp).clickable(actionStartActivity<MainActivity>())) {
-                        Text(mark(d.item) + d.item.title, maxLines = 1, style = TextStyle(color = primary, fontSize = 14.sp))
-                        Text(dateTimeText(d.item, d.date), style = TextStyle(color = muted, fontSize = 12.sp))
-                    }
                 }
                 items(tasks.size) { i ->
                     val t = tasks[i]
@@ -123,6 +134,12 @@ class CompleteAction : ActionCallback {
         val id = parameters[ItemKey] ?: return
         val repo = context.app.repo
         repo.get(id)?.let { repo.complete(it) }
+        ProtonWidget().updateAll(context)
+    }
+}
+
+class RefreshAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         ProtonWidget().updateAll(context)
     }
 }
